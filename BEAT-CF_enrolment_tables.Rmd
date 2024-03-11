@@ -2,10 +2,11 @@
 title: "BEATCF enrolment tables"
 author: "Edward Pan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-# lof: yes
-# lot: yes
-output: pdf_document
-# documentclass: scrreprt
+output:
+  pdf_document:
+    latex_engine: xelatex
+mainfont: Arial
+
 ---
 
 ```{r setup, include=FALSE}
@@ -34,7 +35,9 @@ library(ggplot2)
 
 library(kableExtra)
 library(tinytex)
+library(officedown)
 
+library(latex2exp)
 # library(kableExtra)
 # library(flextable)
 # #library(knitr)
@@ -52,21 +55,33 @@ cutoff_date <- "2023-07-01" #The Date which enrolments should be before
 # Get data from MySQL Database
 sql_string <- str_glue('SELECT *
 FROM beatcf_enrolment_paper
-WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")')
+WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")') # Remove the two duplicate participants
 
 baseline_data <- dbGetQuery(conn, sql_string)
 ```
 
 ```{r}
 table_demographics <- baseline_data %>% 
-    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, sweat_chlorine_level, pancreatic_insufficiency, cf_diab, c_difficile, total_ige, ppfev_365, ppfev_180)%>%
+    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, sweat_chlorine_level, pancreatic_insufficiency, cf_diab, ppfev_365, ppfev_180)%>%
     # Order the categorical variables
-    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", ">=60", "CFTR modulator", "Enrolment before Aug2022"))) %>%
-    mutate(age_category = factor(age_category, levels = c("<6y", "6y-<12y", "12y-<18y", "18y-<30y", "30y-<40y", ">=40y"))) %>% 
+    mutate(sweat_chlorine_level = case_when(sweat_chlorine_level == "<40" ~ "<40",
+                                            sweat_chlorine_level == "40-<60" ~ "40-<60",
+                                            sweat_chlorine_level == ">=60" ~ "≥60",
+                                            sweat_chlorine_level == "Concurrent CFTR modulators" ~ "Concurrent CFTR modulators",
+                                            sweat_chlorine_level == "Enrolment before Aug2022" ~ "Enrolment before Aug2022")) %>%
+    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", ">=60", "Concurrent CFTR modulators", "Enrolment before Aug2022"))) %>%
+    mutate(age_category = case_when(age_category == ">=40y" ~ "≥40y",
+                                    age_category == "<6y" ~ "<6y",
+                                    age_category == "6y-<12y" ~ "6y-<12y",
+                                    age_category == "12y-<18y" ~ "12y-<18y",
+                                    age_category == "18y-<30y" ~ "18y-<30y",
+                                    age_category == "30y-<40y" ~ "30y-<40y")) %>%
+    mutate(age_category = factor(age_category, levels = c("<6y", "6y-<12y", "12y-<18y", "18y-<30y", "30y-<40y", "≥40y"))) %>%
+    mutate(genotype = factor(genotype, levels = c("Homozygous F508del", "Heterozygous F508del"))) %>%
     tbl_summary(
     by = stratum,
-    type = list(total_ige ~ "continuous2", age_int ~ "continuous2"), # Arrange some of the variables as median / IQR
-    label=list(age_int~"Median age in years (IQR)", age_category~"Age Groups", height~"Mean height in cm (SD)", weight~"Mean weight in kilograms (SD)", BMI~"BMI kg/m^2 (SD)", sex~"Sex", genotype~"Genotype", sweat_chlorine_level~"Sweat Chlorine Level in mmol/L", pancreatic_insufficiency~"Pancreatic Insufficiency", cf_diab~"CF diabetes mellitus", c_difficile~"C.difficile (identified in the previous 2 years)",total_ige~"Total IgE", ppfev_365~"Highest ppFEV in previous 12 months", ppfev_180~"Highest ppFEV in the previous 6 months"),
+    type = list(age_int ~ "continuous2"), # Arrange some of the variables as median / IQR
+    label=list(age_int~"Median age in years (IQR)", age_category~"Age Groups", height~"Mean height in cm (SD)", weight~"Mean weight in kilograms (SD)", BMI~"BMI kg/m² (SD)", sex~"Sex", genotype~"Genotype", sweat_chlorine_level~"Sweat Chlorine Level in mmol/L", pancreatic_insufficiency~"Pancreatic Insufficiency", cf_diab~"CF diabetes mellitus", ppfev_365~"Highest ppFEV in previous 12 months", ppfev_180~"Highest ppFEV in the previous 6 months"),
     statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)", all_continuous2() ~ "{median} ({p25}, {p75})"),
     missing="ifany", missing_text = "(Missing)",
     percent="column") %>%
@@ -77,20 +92,18 @@ table_demographics <- baseline_data %>%
     # modify_table_styling(columns = label,
     # rows = label == "Age (years)",
     # footnote = "i.e. placebo") %>%
-    modify_header(stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
 # BMI~"BMI (kg/m^2)"
 
-as_kable_extra(table_demographics, booktabs = TRUE, linesep = "") %>%
+as_kable_extra(table_demographics, booktabs = TRUE, escape = FALSE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
 column_spec(2:6, width = "2.1cm")
-
-# Saves to .png file, however columns have been cut off
-#gt::gtsave(as_gt(table_demographics), file = file.path("C:/Users/EPan/Documents/BEAT-CF/RMarkdown Code/", "temp.png"))
 ```
+
 ```{r} 
 # CFQR ages 12 and 13
 cutoff_date <- "2023-07-01" #The Date which enrolments should be before
@@ -113,9 +126,10 @@ table_cfqr <- cfqr1213_data %>%
     percent = "column") %>%
     bold_labels() %>%
     add_overall() %>%
+    modify_column_hide(columns = "stat_5") %>%
     modify_caption("**CFQR Ages 12 and 13 at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
@@ -123,6 +137,7 @@ as_kable_extra(table_cfqr, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
 column_spec(2:6, width = "2.1cm")
 ```
+
 ```{r} 
 # CFQR ages adolescents and adults
 cutoff_date <- "2023-07-01" #The Date which enrolments should be before
@@ -145,9 +160,10 @@ table_cfqr <- cfqradol_data %>%
     percent = "column") %>%
     bold_labels() %>%
     add_overall() %>%
+    modify_column_hide(columns = "stat_5") %>%
     modify_caption("**CFQR Adolescents and Adults at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
@@ -178,9 +194,10 @@ table_cfqr <- cfqrparent_data %>%
     percent = "column") %>%
     bold_labels() %>%
     add_overall() %>%
+    modify_column_hide(columns = "stat_5") %>%
     modify_caption("**CFQR Parents and Caregivers at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
@@ -202,11 +219,8 @@ conmeds_data <- dbGetQuery(conn, sql_string)
 ```
 
 ```{r}
-# Stacking Tables
-# Ordered By Frequency Manually
-
-# Antibiotics
-t1 <- conmeds_data %>% select(
+table_conmeds <- conmeds_data %>% 
+    select(
   stratum, 
   Antibiotic___Azithromycin, 
   Antibiotic___Tobramycin, 
@@ -214,9 +228,34 @@ t1 <- conmeds_data %>% select(
   Antibiotic___Flucloxacillin, 
   Antibiotic___Cotrimoxazole_, 
   Antibiotic___Ciprofloxacin, 
-  Antibiotic___other) %>% 
-  tbl_summary(
-    by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"), 
+  Antibiotic___other,
+  Antifungal,
+  Corticosteroids___Inhaled,
+  Corticosteroids___Nasal,
+  Corticosteroids___Systemic,
+  Corticosteroids___Topical,
+  Dornase_Alfa, 
+  Hypertonic_saline, 
+  Mannitol__Bronchitol_,
+  Elexacaftor_tezacaftor_ivacaftor__Trikafta_, 
+  Lumacaftor_ivacaftor__Orkambi_, 
+  Tezacaftor_ivacaftor_and_ivacaftor__symdeko_, 
+  Ivacaftor__Kalydeco_,
+  Antidepressant, 
+  Antipsychotic, 
+  ADHD_medication,
+  Vitamin_mineral_supplements, 
+  Pancreatic_enzyme_replacement, 
+  Sodium_chloride__salt_, 
+  Salbutamol__Ventolin_, 
+  Proton_pump_inhibitor, 
+  Insulin_medication, 
+  Ursodeoxycholic_acid, 
+  Iron_supplement
+  )%>%
+    tbl_summary(
+    by = stratum,
+    statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
     label=list(
       Antibiotic___Amoxicillin ~ "Amoxicillin", 
       Antibiotic___Azithromycin ~ "Azithromycin", 
@@ -224,202 +263,221 @@ t1 <- conmeds_data %>% select(
       Antibiotic___Cotrimoxazole_ ~ "Cotrimoxazole", 
       Antibiotic___Flucloxacillin ~ "Flucloxacillin", 
       Antibiotic___Tobramycin ~ "Tobramycin", 
-      Antibiotic___other ~ "Other")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# Antifungals
-t2 <- conmeds_data %>% select(stratum, Antifungal) %>% tbl_summary(by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"))%>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# Corticosteroids
-t3 <- conmeds_data %>% select(
-  stratum, 
-  Corticosteroids___Inhaled,
-  Corticosteroids___Nasal,
-  Corticosteroids___Systemic,
-  Corticosteroids___Topical) %>% 
-  tbl_summary(
-    by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-    label=list(
+      Antibiotic___other ~ "Other",
       Corticosteroids___Inhaled ~ "Inhaled", 
       Corticosteroids___Nasal ~ "Nasal", 
       Corticosteroids___Systemic ~ "Systemic",
-      Corticosteroids___Topical ~ "Topical")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# Muco-active agents (Added salbultamol - don't know if it is a Muco-active agent)
-t4 <- conmeds_data %>% select(
-  stratum, 
-  Dornase_Alfa, 
-  Hypertonic_saline, 
-  Mannitol__Bronchitol_) %>% 
-  tbl_summary(
-    by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-    label=list(
-      Dornase_Alfa ~ "Dornase Alfa", 
-      Mannitol__Bronchitol_ ~ "Mannitol Bronchitol", 
-      Hypertonic_saline ~ "Hypertonic saline"))%>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# CFTR modulators
-t5 <- conmeds_data %>% select(
-  stratum, 
-  Elexacaftor_tezacaftor_ivacaftor__Trikafta_, 
-  Lumacaftor_ivacaftor__Orkambi_, 
-  Tezacaftor_ivacaftor_and_ivacaftor__symdeko_, 
-  Ivacaftor__Kalydeco_) %>% 
-  tbl_summary(
-    by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-    label=list(
+      Corticosteroids___Topical ~ "Topical",
       Elexacaftor_tezacaftor_ivacaftor__Trikafta_ ~ "Elexacaftor/tezacaftor/ivacaftor (Trikafta)", 
       Tezacaftor_ivacaftor_and_ivacaftor__symdeko_ ~ "Tezacaftor/ivacaftor (symdeko)", 
       Ivacaftor__Kalydeco_ ~ "Ivacaftor (Kalydeco)",
-      Lumacaftor_ivacaftor__Orkambi_ ~ "Lumacaftor/ivacaftor (Orkambi)")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# Antidepressants and antipsychotic medications
-t6 <- conmeds_data %>% select(
-  stratum, 
-  Antidepressant, 
-  Antipsychotic, 
-  ADHD_medication) %>% 
-  tbl_summary(
-    by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-  label=list(
-    Antidepressant ~ "Antidepressant", 
-    Antipsychotic ~ "Antipsychotic", 
-    ADHD_medication ~ "ADHD medication")) %>%
-  bold_labels() %>%
-  add_overall() %>%
-  modify_caption("**Concomitant medications at enrolment**") %>%
-  modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-  modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-# Other
-t7 <- conmeds_data %>% select(stratum, Vitamin_mineral_supplements, Pancreatic_enzyme_replacement, Sodium_chloride__salt_, Salbutamol__Ventolin_, Proton_pump_inhibitor, Insulin_medication, Ursodeoxycholic_acid, Iron_supplement) %>% tbl_summary(by = stratum,missing="no",percent="column",statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-label=list(
-Vitamin_mineral_supplements ~ "Vitamin/mineral supplements", 
-Pancreatic_enzyme_replacement ~ "Pancreatic enzyme replacement", 
-Sodium_chloride__salt_ ~ "Sodium chloride",
-Proton_pump_inhibitor ~ "Proton pump inhibitor",
-Ursodeoxycholic_acid ~ "Ursodeoxycholic acid",
-Iron_supplement ~ "Iron supplement",
-Insulin_medication ~ "Insulin medication",
-Salbutamol__Ventolin_ ~ "Bronchodilator (Salbutamol)")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Concomitant medications at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Medication Name",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-tbl1 <-
-  tbl_stack(
-    list(t1, t2, t3, t4, t5, t6, t7), 
-    group_header = c("Antibiotics", "Antifungal", "Corticosteroids", "Muco-active agents", "CFTR modulators", "Antidepressants/Antipsychotic", "Other")
-  )%>%
-bold_labels()
-
-as_kable_extra(tbl1, booktabs = TRUE, linesep = "") %>%
-kable_styling(latex_options = "scale_down") %>%
-column_spec(3:7, width = "1.8cm")
-```
-
-```{r}
-table_conmeds <- conmeds_data %>% 
-    select(stratum,Antibiotic___Amoxicillin,Antibiotic___Azithromycin,Antibiotic___Ciprofloxacin,Antibiotic___Cotrimoxazole_,Antibiotic___Flucloxacillin,Antibiotic___Tobramycin,Antibiotic___other,Antifungal,Corticosteroids___Inhaled,Corticosteroids___Nasal,Corticosteroids___Systemic,Corticosteroids___Topical,Dornase_Alfa,Mannitol__Bronchitol_,Hypertonic_saline,Elexacaftor_tezacaftor_ivacaftor__Trikafta_,Tezacaftor_ivacaftor_and_ivacaftor__symdeko_,Ivacaftor__Kalydeco_,Lumacaftor_ivacaftor__Orkambi_,Pancreatic_enzyme_replacement,Proton_pump_inhibitor,Salbutamol__Ventolin_,Sodium_chloride__salt_,Ursodeoxycholic_acid,Iron_supplement,Vitamin_mineral_supplements,Other)%>%
-    tbl_summary(
-    by = stratum,
-    statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-    label=list(Antibiotic___Amoxicillin ~ "Amoxicillin", Antibiotic___Azithromycin ~ "Azithromycin", Antibiotic___Ciprofloxacin ~ "Ciprofloxacin", Antibiotic___Cotrimoxazole_ ~ "Cotrimoxazole", Antibiotic___Flucloxacillin ~ "Flucloxacillin", Antibiotic___Tobramycin ~ "Tobramycin", Antibiotic___other ~ "Other Antibiotic", Corticosteroids___Inhaled ~ "Inhaled", Corticosteroids___Nasal ~ "Nasal", Corticosteroids___Systemic ~ "Systemic",Corticosteroids___Topical ~ "Topical", Dornase_Alfa ~ "Dornase Alfa",Mannitol__Bronchitol_ ~ "Mannitol Bronchitol",Hypertonic_saline ~ "Hypertonic saline", Elexacaftor_tezacaftor_ivacaftor__Trikafta_ ~ "Elexacaftor tezacaftor ivacaftor (Trikafta)", Tezacaftor_ivacaftor_and_ivacaftor__symdeko_ ~ "Tezacaftor ivacaftor and ivacaftor (symdeko)", Ivacaftor__Kalydeco_ ~ "Ivacaftor (Kalydeco)",Lumacaftor_ivacaftor__Orkambi_ ~ "Lumacaftor ivacaftor (Orkambi)", Pancreatic_enzyme_replacement ~ "Pancreatic enzyme replacement" ,Proton_pump_inhibitor ~ "Proton pump inhibitor",Salbutamol__Ventolin_ ~ "Salbutamol Ventolin",Sodium_chloride__salt_ ~"Sodium chloride salt",Ursodeoxycholic_acid ~ "Ursodeoxycholic acid",Iron_supplement ~ "Iron supplement",Vitamin_mineral_supplements ~ "Vitamin mineral supplements", Other ~ "Infrequent other medications (< 3%)"),
+      Lumacaftor_ivacaftor__Orkambi_ ~ "Lumacaftor/ivacaftor (Orkambi)",
+      Antidepressant ~ "Antidepressant", 
+      Antipsychotic ~ "Antipsychotic", 
+      ADHD_medication ~ "ADHD medication",
+      Dornase_Alfa ~ "Dornase Alfa", 
+      Mannitol__Bronchitol_ ~ "Mannitol Bronchitol", 
+      Hypertonic_saline ~ "Hypertonic saline",
+      Vitamin_mineral_supplements ~ "Vitamin/mineral supplements", 
+      Pancreatic_enzyme_replacement ~ "Pancreatic enzyme replacement", 
+      Sodium_chloride__salt_ ~ "Sodium chloride",
+      Proton_pump_inhibitor ~ "Proton pump inhibitor",
+      Ursodeoxycholic_acid ~ "Ursodeoxycholic acid",
+      Iron_supplement ~ "Iron supplement",
+      Insulin_medication ~ "Insulin medication",
+      Salbutamol__Ventolin_ ~ "Bronchodilator (Salbutamol)"
+      ),
     missing="no",
     percent="column",
     ) %>%
-    bold_labels() %>%
+    #bold_labels() %>%
     add_overall() %>%
+    modify_table_body(
+      ~.x %>%
+        
+      # Create a dummy row for the grouping. Check which variables are needed from the table_body in the tbl_summary information
+      rbind(
+        tibble(
+          variable="Antibiotics",
+          var_type=NA,
+          var_label = "Antibiotics",
+          row_type="label",
+          label="Antibiotics",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="Corticosteroids",
+          var_type=NA,
+          var_label = "Corticosteroids",
+          row_type="label",
+          label="Corticosteroids",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="Muco-active agents",
+          var_type=NA,
+          var_label = "Muco-active agents",
+          row_type="label",
+          label="Muco-active agents",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="CFTR modulators",
+          var_type=NA,
+          var_label = "CFTR modulators",
+          row_type="label",
+          label="CFTR modulators",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="Antidepressants/Antipsychotic",
+          var_type=NA,
+          var_label = "Antidepressants/Antipsychotic",
+          row_type="label",
+          label="Antidepressants/Antipsychotic",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+        arrange(factor(variable, levels=c(
+          "Antibiotics",
+          "Antibiotic___Azithromycin",
+          "Antibiotic___Tobramycin", 
+          "Antibiotic___Amoxicillin", 
+          "Antibiotic___Flucloxacillin", 
+          "Antibiotic___Cotrimoxazole_", 
+          "Antibiotic___Ciprofloxacin", 
+          "Antibiotic___other",
+          "Antifungal",
+          "Corticosteroids",
+          "Corticosteroids___Inhaled",
+          "Corticosteroids___Nasal",
+          "Corticosteroids___Systemic",
+          "Corticosteroids___Topical",
+          "Muco-active agents",
+          "Dornase_Alfa", 
+          "Hypertonic_saline", 
+          "Mannitol__Bronchitol_",
+          "CFTR modulators",
+          "Elexacaftor_tezacaftor_ivacaftor__Trikafta_", 
+          "Lumacaftor_ivacaftor__Orkambi_", 
+          "Tezacaftor_ivacaftor_and_ivacaftor__symdeko_", 
+          "Ivacaftor__Kalydeco_",
+          "Antidepressants/Antipsychotic",
+          "Antidepressant", 
+          "Antipsychotic", 
+          "ADHD_medication",
+          "Vitamin_mineral_supplements", 
+          "Pancreatic_enzyme_replacement", 
+          "Sodium_chloride__salt_", 
+          "Salbutamol__Ventolin_", 
+          "Proton_pump_inhibitor", 
+          "Insulin_medication", 
+          "Ursodeoxycholic_acid", 
+          "Iron_supplement"
+          ))))%>%
+  
+    # Indent the Grouped Medications
+    modify_column_indent(columns=label, rows=variable%in%c(
+      "Antibiotic___Azithromycin",
+      "Antibiotic___Tobramycin", 
+      "Antibiotic___Amoxicillin", 
+      "Antibiotic___Flucloxacillin", 
+      "Antibiotic___Cotrimoxazole_", 
+      "Antibiotic___Ciprofloxacin", 
+      "Antibiotic___other",
+      "Corticosteroids___Inhaled",
+      "Corticosteroids___Nasal",
+      "Corticosteroids___Systemic",
+      "Corticosteroids___Topical",
+      "Dornase_Alfa", 
+      "Hypertonic_saline", 
+      "Mannitol__Bronchitol_",
+      "Elexacaftor_tezacaftor_ivacaftor__Trikafta_", 
+      "Lumacaftor_ivacaftor__Orkambi_", 
+      "Tezacaftor_ivacaftor_and_ivacaftor__symdeko_", 
+      "Ivacaftor__Kalydeco_",
+      "Antidepressant", 
+      "Antipsychotic", 
+      "ADHD_medication"
+      ))%>%
+  
+    modify_table_styling(
+      columns=label, rows=variable%in%c(
+        "Antibiotics",
+        "Antifungal",
+        "Corticosteroids",
+        "CFTR modulators",
+        "Antidepressants/Antipsychotic",
+        "Muco-active agents",
+        "Vitamin_mineral_supplements", 
+        "Pancreatic_enzyme_replacement", 
+        "Sodium_chloride__salt_", 
+        "Salbutamol__Ventolin_", 
+        "Proton_pump_inhibitor", 
+        "Insulin_medication", 
+        "Ursodeoxycholic_acid", 
+        "Iron_supplement"),
+      text_format = "bold") %>%
+      
     modify_caption("**Concomitant medications at enrolment**") %>%
     modify_column_hide(columns = "stat_5") %>% # Removes Other Column
     modify_header(label = "Medication Name",
                   stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+                  stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
     
-# as_kable_extra(table_conmeds, booktabs = TRUE) %>%
-# kable_styling(latex_options = "scale_down") %>%
-# column_spec(2:6, width = "1.8cm")
+as_kable_extra(table_conmeds, booktabs = TRUE, linesep = "") %>%
+kable_styling(latex_options = "scale_down") %>%
+column_spec(2:6, width = "1.8cm")
 ```
 
 ``` {r}
-# Microbiology Bacteria
+# Microbiology Virus
 cutoff_date <- "2023-07-01" #The Date which enrolments should be before
 
 # Get data from MySQL Database
-sql_string <- str_glue('SELECT *
-FROM microbiology_bacteria_final
-WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")')
+sql_string <- str_glue('SELECT t1.*, t2.Aspergillus, t2.Candida_species, t2.Fungi_mould_yeast_Other, t3.Adenovirus, t3.COVID_19, t3.Enterovirus, t3.Influenza_, t3.PIV, t3.Rhinovirus, t3.RSV, t3.Virus_other
+FROM microbiology_bacteria_final t1
+INNER JOIN microbiology_fungi_final t2
+INNER JOIN microbiology_virus_final t3 ON t1.study_id = t2.study_id and t1.study_id = t3.study_id
+WHERE t1.enrolment_date < "{cutoff_date}" and t1.study_id not in ("010-0004", "010-0032")')
 
-microbiology_bacteria <- dbGetQuery(conn, sql_string)
+microbiology <- dbGetQuery(conn, sql_string)
 
 # Collect the variables from the dataframe
-table_microbiology_bacteria <- microbiology_bacteria %>%
+table_microbiology <- microbiology %>%
     select(
-      stratum, 
+      stratum,
       Pseudomonas_species, 
       Staphylococcus_species,
       Haemophilus_species,
@@ -437,21 +495,32 @@ table_microbiology_bacteria <- microbiology_bacteria %>%
       Achromobacter_species,
       Serratia_species,
       Burkholderia,
-      Bacteria_Other)%>%
+      Bacteria_Other,
+      Rhinovirus,
+      COVID_19,
+      PIV,
+      RSV,
+      Enterovirus,
+      Adenovirus,
+      Influenza_,
+      Virus_other,
+      Aspergillus,
+      Candida_species,
+      Fungi_mould_yeast_Other)%>%
     tbl_summary(
       by = stratum,
       statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
       missing="no",
       percent="column",
       label=list(
-        Pseudomonas_species ~ "Pseudomonas species",
+        Pseudomonas_species ~ "Pseudomonas species", 
         Staphylococcus_species ~ "Staphylococcus species",
         Haemophilus_species ~ "Haemophilus species",
         Stenotrophomonas_species ~ "Stenotrophomonas species",
         Mycobacterium_species ~ "Mycobacterium species",
         Pneumococcus ~ "Streptococcus pneumoniae",
         Streptococccus_pyogenes ~ "Streptococccus pyogenes",
-        Streptococccus_species ~ "Streptococccus species (Other)",
+        Streptococccus_species ~ "Streptococcus species (other)",
         Escherichia_species ~ "Escherichia species",
         Klebsiella_species ~ "Klebsiella species",
         Chryseobacterium_species ~ "Chryseobacterium species",
@@ -460,116 +529,153 @@ table_microbiology_bacteria <- microbiology_bacteria %>%
         Acinetobacterium_species ~ "Acinetobacterium species",
         Achromobacter_species ~ "Achromobacter species",
         Serratia_species ~ "Serratia species",
-        Burkholderia ~ "Burkholderia species",
-        Bacteria_Other ~ "Other")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Microbiology (Bacteria) at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_header(label = "Microbiology",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-as_kable_extra(table_microbiology_bacteria, booktabs = TRUE, linesep = "") %>%
-kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
-```
-
-``` {r}
-# Microbiology Virus
-cutoff_date <- "2023-07-01" #The Date which enrolments should be before
-
-# Get data from MySQL Database
-sql_string <- str_glue('SELECT *
-FROM microbiology_virus_final
-WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")')
-
-microbiology_virus <- dbGetQuery(conn, sql_string)
-
-# Collect the variables from the dataframe
-table_microbiology_virus <- microbiology_virus %>%
-    select(
-      stratum,
-      Rhinovirus,
-      COVID_19,
-      PIV,
-      RSV,
-      Enterovirus,
-      Adenovirus,
-      Influenza_,
-      Virus_other)%>%
-    tbl_summary(
-      by = stratum,
-      statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-      missing="no",
-      percent="column",
-      label=list(
+        Burkholderia ~ "Burkholderia species", 
+        Bacteria_Other ~ "Other",
         Rhinovirus ~ "Rhinovirus",
         COVID_19 ~ "SARS-CoV-2",
         PIV ~ "Parainfluenza (PIV)",
-        RSV ~ "Synctial (RSV)",
+        RSV ~ "Respiratory Syncytial Virus (RSV)",
         Enterovirus ~ "Enterovirus",
         Adenovirus ~ "Adenovirus",
         Influenza_ ~ "Influenza",
-        Virus_other ~ "Other")) %>%
-    bold_labels() %>%
+        Virus_other ~ "Other",
+        Aspergillus ~ "Aspergillus species",
+        Candida_species ~ "Candida species",
+        Fungi_mould_yeast_Other ~ "Other"
+        )) %>%
+    #bold_labels() %>%
     add_overall() %>%
+    modify_table_body(
+      ~.x %>%
+        
+      # Create a dummy row for the grouping. Check which variables are needed from the table_body in the tbl_summary information
+      rbind(
+        tibble(
+          variable="Bacterial pathogen",
+          var_type=NA,
+          var_label = "Bacterial pathogen",
+          row_type="label",
+          label="Bacterial pathogen",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="Viral pathogen",
+          var_type=NA,
+          var_label = "Viral pathogen",
+          row_type="label",
+          label="Viral pathogen",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+      rbind(
+        tibble(
+          variable="Fungi",
+          var_type=NA,
+          var_label = "Fungi",
+          row_type="label",
+          label="Fungi",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+        arrange(factor(variable, levels=c(
+          "Bacterial pathogen",
+          "Pseudomonas_species", 
+          "Staphylococcus_species",
+          "Haemophilus_species",
+          "Stenotrophomonas_species",
+          "Mycobacterium_species",
+          "Pneumococcus",
+          "Streptococccus_pyogenes",
+          "Streptococccus_species",
+          "Escherichia_species",
+          "Klebsiella_species",
+          "Chryseobacterium_species",
+          "Enterobacter_species",
+          "Moraxella_species",
+          "Acinetobacterium_species",
+          "Achromobacter_species",
+          "Serratia_species",
+          "Burkholderia",
+          "Bacteria_Other",
+          "Viral pathogen",
+          "Rhinovirus",
+          "COVID_19",
+          "PIV",
+          "RSV",
+          "Enterovirus",
+          "Adenovirus",
+          "Influenza_",
+          "Virus_other",
+          "Fungi",
+          "Aspergillus",
+          "Candida_species",
+          "Fungi_mould_yeast_Other"
+          ))))%>%
+  
+      # Indent the Grouped Medications
+    modify_column_indent(columns=label, rows=variable%in%c(
+          "Pseudomonas_species", 
+          "Staphylococcus_species",
+          "Haemophilus_species",
+          "Stenotrophomonas_species",
+          "Mycobacterium_species",
+          "Pneumococcus",
+          "Streptococccus_pyogenes",
+          "Streptococccus_species",
+          "Escherichia_species",
+          "Klebsiella_species",
+          "Chryseobacterium_species",
+          "Enterobacter_species",
+          "Moraxella_species",
+          "Acinetobacterium_species",
+          "Achromobacter_species",
+          "Serratia_species",
+          "Burkholderia",
+          "Bacteria_Other",
+          "Rhinovirus",
+          "COVID_19",
+          "PIV",
+          "RSV",
+          "Enterovirus",
+          "Adenovirus",
+          "Influenza_",
+          "Virus_other",
+          "Aspergillus",
+          "Candida_species",
+          "Fungi_mould_yeast_Other"
+      ))%>%
+  
+    modify_table_styling(
+      columns=label, rows=variable%in%c(
+        "Bacterial pathogen",
+        "Viral pathogen",
+        "Fungi"),
+      text_format = "bold") %>%
+  
     modify_column_hide(columns = "stat_5") %>%
-    modify_caption("**Microbiology (Virus) at enrolment**") %>%
+    modify_caption("**Microbiology at enrolment**") %>%
     modify_header(label = "Microbiology",
                   stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
+                  stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
-as_kable_extra(table_microbiology_virus, booktabs = TRUE, linesep = "") %>%
-kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
-```
-
-``` {r}
-# Microbiology Fungi
-cutoff_date <- "2023-07-01" #The Date which enrolments should be before
-
-# Get data from MySQL Database
-sql_string <- str_glue('SELECT *
-FROM microbiology_fungi_final
-WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")')
-
-microbiology_fungi <- dbGetQuery(conn, sql_string)
-
-# Collect the variables from the dataframe
-table_microbiology_fungi <- microbiology_fungi %>%
-    select(
-      stratum,
-      Aspergillus,
-      Candida_species,
-      Fungi_mould_yeast_Other)%>%
-    tbl_summary(
-    by = stratum,
-    statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
-    missing="no",
-    percent="column",
-    label=list(
-      Aspergillus ~ "Aspergillus species",
-      Candida_species ~ "Candida species",
-      Fungi_mould_yeast_Other ~ "Other")) %>%
-    bold_labels() %>%
-    add_overall() %>%
-    modify_caption("**Microbiology (Fungi) at enrolment**") %>%
-    modify_column_hide(columns = "stat_5") %>%
-    modify_header(label = "Microbiology",
-                  stat_0 = "Overall\nN={n}",
-                  stat_1 = "ppFEV1>70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1>70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
-
-as_kable_extra(table_microbiology_fungi, booktabs = TRUE, linesep = "") %>%
+as_kable_extra(table_microbiology, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
 column_spec(2:6, width = "2.1cm")
 ```
