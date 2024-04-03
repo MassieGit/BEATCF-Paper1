@@ -67,9 +67,9 @@ table_demographics <- baseline_data %>%
     mutate(sweat_chlorine_level = case_when(sweat_chlorine_level == "<40" ~ "<40",
                                             sweat_chlorine_level == "40-<60" ~ "40-<60",
                                             sweat_chlorine_level == ">=60" ~ "≥60",
-                                            sweat_chlorine_level == "Concurrent CFTR modulators" ~ "Concurrent CFTR modulators",
+                                            sweat_chlorine_level == "CFTR modulator" ~ "Concurrent CFTR modulators",
                                             sweat_chlorine_level == "Enrolment before Aug2022" ~ "Enrolment before Aug2022")) %>%
-    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", ">=60", "Concurrent CFTR modulators", "Enrolment before Aug2022"))) %>%
+    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", "≥60", "Concurrent CFTR modulators", "Enrolment before Aug2022"))) %>%
     mutate(age_category = case_when(age_category == ">=40y" ~ "≥40y",
                                     age_category == "<6y" ~ "<6y",
                                     age_category == "6y-<12y" ~ "6y-<12y",
@@ -77,8 +77,9 @@ table_demographics <- baseline_data %>%
                                     age_category == "18y-<30y" ~ "18y-<30y",
                                     age_category == "30y-<40y" ~ "30y-<40y")) %>%
     mutate(age_category = factor(age_category, levels = c("<6y", "6y-<12y", "12y-<18y", "18y-<30y", "30y-<40y", "≥40y"))) %>%
-    mutate(genotype = factor(genotype, levels = c("Homozygous F508del", "Heterozygous F508del"))) %>%
+    mutate(genotype = factor(genotype, levels = c("Homozygous F508del", "Heterozygous F508del", "Other"))) %>%
     tbl_summary(
+    digits = list(all_categorical() ~ c(0, 1)),
     by = stratum,
     type = list(age_int ~ "continuous2"), # Arrange some of the variables as median / IQR
     label=list(age_int~"Median age in years (IQR)", age_category~"Age Groups", height~"Mean height in cm (SD)", weight~"Mean weight in kilograms (SD)", BMI~"BMI kg/m² (SD)", sex~"Sex", genotype~"Genotype", sweat_chlorine_level~"Sweat Chlorine Level in mmol/L", pancreatic_insufficiency~"Pancreatic Insufficiency", cf_diab~"CF diabetes mellitus", ppfev_365~"Highest ppFEV in previous 12 months", ppfev_180~"Highest ppFEV in the previous 6 months"),
@@ -118,6 +119,7 @@ cfqr1213_data <- dbGetQuery(conn, sql_string)
 table_cfqr <- cfqr1213_data %>% 
     select(stratum, physical, emotional, social, body, eat, treatmentburden, respiration, digestion)%>%
     tbl_summary(
+    digits = list(all_categorical() ~ c(0, 1)),
     by = stratum,
     type = list(body ~ "continuous", eat ~ "continuous", treatmentburden ~ "continuous", respiration ~ "continuous", digestion ~ "continuous"),
     label = list(physical ~ "Physical", emotional ~ "Emotional", social ~ "Social", body ~ "Body", eat ~ "Eat", treatmentburden ~ "Treatment burden", respiration ~ "Respiration", digestion ~ "Digestion"),
@@ -152,6 +154,7 @@ cfqradol_data <- dbGetQuery(conn, sql_string)
 table_cfqr <- cfqradol_data %>% 
     select(stratum, physical, role, vitality, emotional, social, body, eat, treatmentburden, healthperceptions, weight, respiration, digestion)%>%
     tbl_summary(
+    digits = list(all_categorical() ~ c(0, 1)),
     by = stratum,
     type = list(body ~ "continuous", eat ~ "continuous", treatmentburden ~ "continuous", respiration ~ "continuous", digestion ~ "continuous", weight ~ "continuous"),
     label = list(physical ~ "Physical", role ~ "Role", vitality ~ "Vitality", emotional ~ "Emotional", social ~ "Social", body ~ "Body", eat ~ "Eat", treatmentburden ~ "Treatment burden", healthperceptions ~ "Health perceptions", weight ~ "Weight", respiration ~ "Respiration", digestion ~ "Digestion"),
@@ -186,6 +189,7 @@ cfqrparent_data <- dbGetQuery(conn, sql_string)
 table_cfqr <- cfqrparent_data %>% 
     select(stratum, physical, emotional, school, body, eat, treatmentburden, healthperceptions, weight, respiration, digestion)%>%
     tbl_summary(
+    digits = list(all_categorical() ~ c(0, 1)),
     by = stratum,
     type = list(body ~ "continuous", eat ~ "continuous", treatmentburden ~ "continuous", respiration ~ "continuous", digestion ~ "continuous", healthperceptions ~ "continuous", weight ~ "continuous"),
     label = list(physical ~ "Physical", emotional ~ "Emotional", school ~ "School", body ~ "Body", eat ~ "Eat", treatmentburden ~ "Treatment burden", healthperceptions ~ "Health perceptions", weight ~ "Weight", respiration ~ "Respiration", digestion ~ "Digestion"),
@@ -218,7 +222,59 @@ WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-003
 conmeds_data <- dbGetQuery(conn, sql_string)
 ```
 
+
 ```{r}
+
+# Create the Footnote regarding Intravenous Antibiotic cases
+
+footnote_string <- "Out of the antibiotics listed above there were"
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Azithromycin_3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Azithromycin,"))
+}
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Tobramycin_3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Tobramycin,"))
+}
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Amoxicillin_3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Amoxicillin,"))
+}
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Flucloxacillin_3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Flucloxacillin,"))
+}
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Cotrimoxazole__3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Cotrimoxazole,"))
+}
+
+sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Ciprofloxacin_3 = 1')
+anti_data <- dbGetQuery(conn, sql_string)
+
+if (nrow(anti_data) != 0) {
+  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Ciprofloxacin,"))
+}
+
+footnote_string = substr(footnote_string, 1, nchar(footnote_string)-1)
+
+footnote_string = paste(footnote_string, "intravenous cases.")
+
 table_conmeds <- conmeds_data %>% 
     select(
   stratum, 
@@ -254,6 +310,7 @@ table_conmeds <- conmeds_data %>%
   Iron_supplement
   )%>%
     tbl_summary(
+    digits = list(all_categorical() ~ c(0, 1)),
     by = stratum,
     statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
     label=list(
@@ -449,6 +506,10 @@ table_conmeds <- conmeds_data %>%
       
     modify_caption("**Concomitant medications at enrolment**") %>%
     modify_column_hide(columns = "stat_5") %>% # Removes Other Column
+    modify_table_styling(
+    columns = label,
+    rows = variable%in%c("Antibiotics"),
+    footnote = footnote_string) %>%
     modify_header(label = "Medication Name",
                   stat_0 = "Overall\nN={n}",
                   stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
@@ -458,7 +519,7 @@ table_conmeds <- conmeds_data %>%
     
 as_kable_extra(table_conmeds, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "1.8cm")
+column_spec(2:6, width = "2cm")
 ```
 
 ``` {r}
@@ -479,7 +540,9 @@ table_microbiology <- microbiology %>%
     select(
       stratum,
       Pseudomonas_species, 
-      Staphylococcus_species,
+      Staphylococcus_species__MRSA_,
+      Staphylococcus_species__MSSA_,
+      Staphylococcus_species__Unknown_,
       Haemophilus_species,
       Stenotrophomonas_species,
       Mycobacterium_species,
@@ -508,13 +571,16 @@ table_microbiology <- microbiology %>%
       Candida_species,
       Fungi_mould_yeast_Other)%>%
     tbl_summary(
+      digits = list(all_categorical() ~ c(0, 1)),
       by = stratum,
       statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)"),
       missing="no",
       percent="column",
       label=list(
         Pseudomonas_species ~ "Pseudomonas species", 
-        Staphylococcus_species ~ "Staphylococcus species",
+        Staphylococcus_species__MRSA_ ~ "Staphylococcus species (MRSA)",
+        Staphylococcus_species__MSSA_ ~ "Staphylococcus species (MSSA)",
+        Staphylococcus_species__Unknown_ ~ "Staphylococcus species (Unknown)",
         Haemophilus_species ~ "Haemophilus species",
         Stenotrophomonas_species ~ "Stenotrophomonas species",
         Mycobacterium_species ~ "Mycobacterium species",
@@ -594,7 +660,9 @@ table_microbiology <- microbiology %>%
         arrange(factor(variable, levels=c(
           "Bacterial pathogen",
           "Pseudomonas_species", 
-          "Staphylococcus_species",
+          "Staphylococcus_species__MRSA_",
+          "Staphylococcus_species__MSSA_",
+          "Staphylococcus_species__Unknown_",
           "Haemophilus_species",
           "Stenotrophomonas_species",
           "Mycobacterium_species",
@@ -603,8 +671,8 @@ table_microbiology <- microbiology %>%
           "Streptococccus_species",
           "Escherichia_species",
           "Klebsiella_species",
-          "Chryseobacterium_species",
           "Enterobacter_species",
+          "Chryseobacterium_species",
           "Moraxella_species",
           "Acinetobacterium_species",
           "Achromobacter_species",
@@ -629,7 +697,9 @@ table_microbiology <- microbiology %>%
       # Indent the Grouped Medications
     modify_column_indent(columns=label, rows=variable%in%c(
           "Pseudomonas_species", 
-          "Staphylococcus_species",
+          "Staphylococcus_species__MRSA_",
+          "Staphylococcus_species__MSSA_",
+          "Staphylococcus_species__Unknown_",
           "Haemophilus_species",
           "Stenotrophomonas_species",
           "Mycobacterium_species",
