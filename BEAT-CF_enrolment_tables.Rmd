@@ -62,18 +62,20 @@ baseline_data <- dbGetQuery(conn, sql_string)
 
 ```{r}
 table_demographics <- baseline_data %>% 
-    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, sweat_chlorine_level, CFTR_sweat_chlorine_level, pancreatic_insufficiency, cf_diab, ppfev_365, ppfev_180)%>%
+    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, sweat_chlorine_level, pancreatic_insufficiency, cf_diab, ppfev_365, ppfev_180)%>%
     # Order the categorical variables
     mutate(sweat_chlorine_level = case_when(sweat_chlorine_level == "<40" ~ "<40",
                                             sweat_chlorine_level == "40-<60" ~ "40-<60",
                                             sweat_chlorine_level == ">=60" ~ "≥60",
-                                            sweat_chlorine_level == "CFTR modulator" ~ "Concurrent CFTR modulators",
+                                            sweat_chlorine_level == "Missing" ~ "Missing",
+                                            sweat_chlorine_level == "CFTR <40" ~ "CFTR <40",
+                                            sweat_chlorine_level == "CFTR 40-<60" ~ "CFTR 40-<60",
+                                            sweat_chlorine_level == "CFTR >=60" ~ "CFTR ≥60",
+                                            sweat_chlorine_level == "CFTR Missing" ~ "CFTR Missing",
                                             sweat_chlorine_level == "Enrolment before Aug2022" ~ "Enrolment before Aug2022")) %>%
-    mutate(CFTR_sweat_chlorine_level = case_when(CFTR_sweat_chlorine_level == "<40" ~ "<40",
-                                            CFTR_sweat_chlorine_level == "40-<60" ~ "40-<60",
-                                            CFTR_sweat_chlorine_level == ">=60" ~ "≥60",
-                                            CFTR_sweat_chlorine_level == "Missing" ~ "Missing")) %>%  
-    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", "≥60", "Concurrent CFTR modulators", "Enrolment before Aug2022"))) %>%
+    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", "≥60", "Missing",
+                                                                          "CFTR <40", "CFTR 40-<60", "CFTR ≥60", "CFTR Missing",
+                                                                          "Enrolment before Aug2022"))) %>%
     mutate(age_category = case_when(age_category == ">=40y" ~ "≥40y",
                                     age_category == "<6y" ~ "<6y",
                                     age_category == "6y-<12y" ~ "6y-<12y",
@@ -95,7 +97,6 @@ table_demographics <- baseline_data %>%
       sex~"Sex", 
       genotype~"Genotype", 
       sweat_chlorine_level~"Sweat Chlorine Level in mmol/L",
-      CFTR_sweat_chlorine_level~"People on CFTR modulators",
       pancreatic_insufficiency~"Pancreatic Insufficiency", 
       cf_diab~"CF diabetes mellitus", 
       ppfev_365~"Highest ppFEV in previous 12 months", 
@@ -244,53 +245,39 @@ conmeds_data <- dbGetQuery(conn, sql_string)
 
 # Create the Footnote regarding Intravenous Antibiotic cases
 
-footnote_string <- "Out of the antibiotics listed above there were"
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Azithromycin_3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Azithromycin,"))
-}
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Tobramycin_3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Tobramycin,"))
-}
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Amoxicillin_3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Amoxicillin,"))
-}
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Flucloxacillin_3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Flucloxacillin,"))
-}
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Cotrimoxazole__3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Cotrimoxazole,"))
-}
-
-sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Ciprofloxacin_3 = 1')
-anti_data <- dbGetQuery(conn, sql_string)
-
-if (nrow(anti_data) != 0) {
-  footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Ciprofloxacin,"))
-}
-
-footnote_string = substr(footnote_string, 1, nchar(footnote_string)-1)
-
-footnote_string = paste(footnote_string, "intravenous cases.")
+# footnote_string <- "Out of the antibiotics listed above there were"
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Azithromycin_3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Azithromycin,"))
+# }
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Tobramycin_3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Tobramycin,"))
+# }
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Amoxicillin_3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Amoxicillin,"))
+# }
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Flucloxacillin_3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Flucloxacillin,"))
+# }
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Cotrimoxazole__3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Cotrimoxazole,"))
+# }
+# sql_string <- str_glue('select * from conmeds_paper_grouped_route where Antibiotic___Ciprofloxacin_3 = 1')
+# anti_data <- dbGetQuery(conn, sql_string)
+# if (nrow(anti_data) != 0) {
+#   footnote_string = paste(footnote_string, str_glue("{nrow(anti_data)} Ciprofloxacin,"))
+# }
+# footnote_string = substr(footnote_string, 1, nchar(footnote_string)-1)
+# footnote_string = paste(footnote_string, "intravenous cases.")
 
 table_conmeds <- conmeds_data %>% 
     select(
@@ -523,10 +510,7 @@ table_conmeds <- conmeds_data %>%
       
     modify_caption("**Concomitant medications at enrolment**") %>%
     modify_column_hide(columns = "stat_5") %>% # Removes Other Column
-    modify_table_styling(
-    columns = label,
-    rows = variable%in%c("Antibiotics"),
-    footnote = footnote_string) %>%
+    # modify_table_styling(columns = label, rows = variable%in%c("Antibiotics"), footnote = footnote_string) %>%
     modify_header(label = "Medication Name",
                   stat_0 = "Overall\nN={n}",
                   stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
@@ -778,3 +762,39 @@ as_kable_extra(table_microbiology, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
 column_spec(2:6, width = "2.1cm")
 ```
+
+
+``` {r}
+cutoff_date <- "2023-07-01" #The Date which enrolments should be before
+
+# Get data from MySQL Database
+sql_string <- str_glue('SELECT *
+FROM beatcf_enrolment_paper
+WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")') # Remove the two duplicate participants
+
+baseline_data <- dbGetQuery(conn, sql_string)
+```
+
+``` {r}
+table_demographics <- baseline_data %>% 
+  select(sweat_chlorine_level)%>%
+  tbl_summary()
+
+sweat_chlorine_recodes <- 
+  list(
+    "People not on CFTR modulators" = c("<40", ">=60", "40-<60", "Missing"),
+    "People on CFTR modulators" = c("CFTR <40", "CFTR >=60", "CFTR 40-<60", "CFTR Missing"),
+    "Enrolment before Aug2022" = "Enrolment before Aug2022"
+  )
+
+tbl1 <- baseline_data %>% 
+  mutate(
+    new_sweat = forcats::fct_collapse(baseline_data$sweat_chlorine_level, !!!sweat_chlorine_recodes)
+  ) %>%  
+  select(new_sweat) %>% 
+  tbl_summary()
+
+as_kable_extra(tbl1, booktabs = TRUE, escape = FALSE, linesep = "") %>%
+kable_styling(latex_options = "scale_down")
+```
+
