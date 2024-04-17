@@ -62,20 +62,7 @@ baseline_data <- dbGetQuery(conn, sql_string)
 
 ```{r}
 table_demographics <- baseline_data %>% 
-    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, sweat_chlorine_level, pancreatic_insufficiency, cf_diab, ppfev_365, ppfev_180)%>%
-    # Order the categorical variables
-    mutate(sweat_chlorine_level = case_when(sweat_chlorine_level == "<40" ~ "<40",
-                                            sweat_chlorine_level == "40-<60" ~ "40-<60",
-                                            sweat_chlorine_level == ">=60" ~ "≥60",
-                                            sweat_chlorine_level == "Missing" ~ "Missing",
-                                            sweat_chlorine_level == "CFTR <40" ~ "CFTR <40",
-                                            sweat_chlorine_level == "CFTR 40-<60" ~ "CFTR 40-<60",
-                                            sweat_chlorine_level == "CFTR >=60" ~ "CFTR ≥60",
-                                            sweat_chlorine_level == "CFTR Missing" ~ "CFTR Missing",
-                                            sweat_chlorine_level == "Enrolment before Aug2022" ~ "Enrolment before Aug2022")) %>%
-    mutate(sweat_chlorine_level = factor(sweat_chlorine_level, levels = c("<40", "40-<60", "≥60", "Missing",
-                                                                          "CFTR <40", "CFTR 40-<60", "CFTR ≥60", "CFTR Missing",
-                                                                          "Enrolment before Aug2022"))) %>%
+    select(stratum, age_int, age_category, height, weight, BMI, sex, genotype, scl_NoCFTR ,scl_NoCFTR_1 ,scl_NoCFTR_2 ,scl_NoCFTR_3 ,scl_NoCFTR_Missing ,scl_CFTR ,scl_CFTR_1 ,scl_CFTR_2 ,scl_CFTR_3 ,scl_CFTR_Missing ,scl_beforeAug, pancreatic_insufficiency, cf_diab, ppfev_365, ppfev_180)%>%
     mutate(age_category = case_when(age_category == ">=40y" ~ "≥40y",
                                     age_category == "<6y" ~ "<6y",
                                     age_category == "6y-<12y" ~ "6y-<12y",
@@ -96,7 +83,17 @@ table_demographics <- baseline_data %>%
       BMI~"BMI kg/m² (SD)", 
       sex~"Sex", 
       genotype~"Genotype", 
-      sweat_chlorine_level~"Sweat Chlorine Level in mmol/L",
+      scl_NoCFTR ~ "People not on CFTR Modulators" ,
+      scl_NoCFTR_1 ~ "<40" ,
+      scl_NoCFTR_2 ~ "40-<60",
+      scl_NoCFTR_3 ~ "≥60",
+      scl_NoCFTR_Missing ~ "Missing",
+      scl_CFTR ~ "People on CFTR Modulators",
+      scl_CFTR_1 ~ "<40"  ,
+      scl_CFTR_2 ~ "40-<60" ,
+      scl_CFTR_3 ~ "≥60" ,
+      scl_CFTR_Missing ~ "Missing" ,
+      scl_beforeAug ~ "Enrolment before Aug2022",
       pancreatic_insufficiency~"Pancreatic Insufficiency", 
       cf_diab~"CF diabetes mellitus", 
       ppfev_365~"Highest ppFEV in previous 12 months", 
@@ -104,13 +101,95 @@ table_demographics <- baseline_data %>%
     statistic = list(all_continuous() ~ "{mean} ({sd})", all_categorical() ~ "{n} ({p}%)", all_continuous2() ~ "{median} ({p25}, {p75})"),
     missing="ifany", missing_text = "(Missing)",
     percent="column") %>%
-    bold_labels() %>%
+    # bold_labels() %>%
     add_overall() %>%
+    modify_table_body(
+      ~.x %>%
+        
+      # Create a dummy row for the grouping. Check which variables are needed from the table_body in the tbl_summary information
+      rbind(
+        tibble(
+          variable="Sweat Chloride Level",
+          var_type=NA,
+          var_label = "Sweat Chloride Level",
+          row_type="label",
+          label="Sweat Chloride Level",
+          stat_0= NA,
+          stat_1= NA,
+          stat_2= NA,
+          stat_3= NA,
+          stat_4= NA,
+          stat_5= NA))%>% # expand the components of the tibble as needed if you have more columns
+        
+        arrange(factor(variable, levels=c(
+          "age_int", 
+          "age_category", 
+          "height", 
+          "weight", 
+          "BMI", 
+          "sex", 
+          "genotype",
+          "Sweat Chloride Level",
+          "scl_NoCFTR",
+          "scl_NoCFTR_1",
+          "scl_NoCFTR_2",
+          "scl_NoCFTR_3",
+          "scl_NoCFTR_Missing",
+          "scl_CFTR",
+          "scl_CFTR_1",
+          "scl_CFTR_2",
+          "scl_CFTR_3",
+          "scl_CFTR_Missing" ,
+          "scl_beforeAug",
+          "pancreatic_insufficiency", 
+          "cf_diab", 
+          "ppfev_365", 
+          "ppfev_180"
+          ))))%>%
+  
+    # Double Indent the Sweat Chloride Sub-Categories
+    modify_column_indent(columns=label, rows=variable%in%c(
+          "scl_NoCFTR_1",
+          "scl_NoCFTR_2",
+          "scl_NoCFTR_3",
+          "scl_NoCFTR_Missing",
+          "scl_CFTR_1",
+          "scl_CFTR_2",
+          "scl_CFTR_3",
+          "scl_CFTR_Missing"
+      ), double_indent = T)%>%
+  
+    # Indent the Sweat Chloride Categories
+    modify_column_indent(columns=label, rows=variable%in%c(
+          "scl_NoCFTR",
+          "scl_CFTR",
+          "scl_beforeAug"
+      ))%>%
+  
+  
     modify_caption("**Demographics and Clinical Baseline Characteristics**") %>%
     modify_column_hide(columns = "stat_5") %>%
-    # modify_table_styling(columns = label,
-    # rows = label == "Age (years)",
-    # footnote = "i.e. placebo") %>%
+    bold_labels() %>%
+  
+    # Undo the bolding of the sweat chloride categories.
+    modify_table_styling(
+      columns=label, rows=variable%in%c(
+          "scl_NoCFTR",
+          "scl_NoCFTR_1",
+          "scl_NoCFTR_2",
+          "scl_NoCFTR_3",
+          "scl_NoCFTR_Missing",
+          "scl_CFTR",
+          "scl_CFTR_1",
+          "scl_CFTR_2",
+          "scl_CFTR_3",
+          "scl_CFTR_Missing",
+          "scl_beforeAug"
+          ),
+      text_format = "bold",
+      undo_text_format = TRUE) %>%
+  
+    modify_table_styling(columns = label, rows = variable%in%c("age_int"), footnote = "Includes 9 records with missing spirometry") %>%
     modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
                   stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
@@ -120,7 +199,8 @@ table_demographics <- baseline_data %>%
 
 as_kable_extra(table_demographics, booktabs = TRUE, escape = FALSE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
+column_spec(2:6, width = "2.1cm") %>%
+add_footnote(c("Sweat chloride level was recorded only for those participants enrolled from 1 Aug 2022.", "ppFEV1: percentage predicted FEV1; IQR: Inter-quartile range; SD: standard deviation; \nBMI: Body mass index; CFTR: cystic fibrosis transmembrane conductance regulator"))
 ```
 
 ```{r} 
@@ -147,15 +227,17 @@ table_cfqr <- cfqr1213_data %>%
     bold_labels() %>%
     add_overall() %>%
     modify_column_hide(columns = "stat_5") %>%
-    modify_caption("**CFQR Ages 12 and 13 at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
+    modify_column_hide(columns = "stat_4") %>%
+    modify_column_hide(columns = "stat_3") %>%
+    modify_caption("**Mean (SD) CFQR for participants aged 12-13 years at Enrolment (60 days)**") %>%
+    modify_header(stat_0 = "Overall, N={n}ᵃ",
+                  stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}")
 
 as_kable_extra(table_cfqr, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
+column_spec(2:4, width = "4cm") %>%
+add_footnote(c("Includes 1 record with missing spirometry.", "Data for stratums loNEG and loPOS were not reported due to privacy concerns regarding small numbers.", "There were 89 participants aged 12 or 13 at the time of enrolment.", "This dataset includes 2 participants of age 11 at enrolment."))
 ```
 
 ```{r} 
@@ -182,15 +264,17 @@ table_cfqr <- cfqradol_data %>%
     bold_labels() %>%
     add_overall() %>%
     modify_column_hide(columns = "stat_5") %>%
-    modify_caption("**CFQR Adolescents and Adults at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+    modify_caption("**Mean (SD) CFQR for participants (aged ≥14 years) at Enrolment (60 days)**") %>%
+    modify_header(stat_0 = "Overall, N={n}ᵃ",
+                  stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
                   stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
                   stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
                   stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
 
 as_kable_extra(table_cfqr, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
+column_spec(2:6, width = "2.1cm") %>%
+add_footnote(c("Includes 4 records with missing spirometry.", "There were 342 participants 14 or older at the time of enrolment."))
 ```
 
 ```{r} 
@@ -217,15 +301,17 @@ table_cfqr <- cfqrparent_data %>%
     bold_labels() %>%
     add_overall() %>%
     modify_column_hide(columns = "stat_5") %>%
-    modify_caption("**CFQR Parents and Caregivers at Enrolment (60 days)**") %>%
-    modify_header(stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
-                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}",
-                  stat_3 = "ppFEV1<70\nNo Pseudomonas\nN={n}",
-                  stat_4 = "ppFEV1<70\nPseudomonas\nN={n}")
+    modify_column_hide(columns = "stat_4") %>%
+    modify_column_hide(columns = "stat_3") %>%
+    modify_caption("**Mean (SD) CFQR as reported by parents and caregivers at Enrolment (60 days)**") %>%
+    modify_header(stat_0 = "Overall, N={n}ᵃ",
+                  stat_1 = "ppFEV1≥70\nNo Pseudomonas\nN={n}",
+                  stat_2 = "ppFEV1≥70\nPseudomonas\nN={n}")
 
 as_kable_extra(table_cfqr, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2.1cm")
+column_spec(2:4, width = "4cm") %>%
+add_footnote(c("Includes 1 record with missing spirometry.","Data for stratums loNEG and loPOS were not reported due to privacy concerns regarding small numbers.", "There were 263 participants aged 6 to 11 at the time of enrolment.", "This dataset includes 4 participants of age 5 at enrolment."))
 ```
 
 
@@ -520,7 +606,8 @@ table_conmeds <- conmeds_data %>%
     
 as_kable_extra(table_conmeds, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
-column_spec(2:6, width = "2cm")
+column_spec(2:6, width = "2cm") %>%
+add_footnote("Participants may have received more than one CFTR modulator in the two years prior to enrolment\nand are included for each modulator prescribed.")
 ```
 
 ``` {r}
@@ -761,40 +848,5 @@ table_microbiology <- microbiology %>%
 as_kable_extra(table_microbiology, booktabs = TRUE, linesep = "") %>%
 kable_styling(latex_options = "scale_down") %>%
 column_spec(2:6, width = "2.1cm")
-```
-
-
-``` {r}
-cutoff_date <- "2023-07-01" #The Date which enrolments should be before
-
-# Get data from MySQL Database
-sql_string <- str_glue('SELECT *
-FROM beatcf_enrolment_paper
-WHERE enrolment_date < "{cutoff_date}" and study_id not in ("010-0004", "010-0032")') # Remove the two duplicate participants
-
-baseline_data <- dbGetQuery(conn, sql_string)
-```
-
-``` {r}
-table_demographics <- baseline_data %>% 
-  select(sweat_chlorine_level)%>%
-  tbl_summary()
-
-sweat_chlorine_recodes <- 
-  list(
-    "People not on CFTR modulators" = c("<40", ">=60", "40-<60", "Missing"),
-    "People on CFTR modulators" = c("CFTR <40", "CFTR >=60", "CFTR 40-<60", "CFTR Missing"),
-    "Enrolment before Aug2022" = "Enrolment before Aug2022"
-  )
-
-tbl1 <- baseline_data %>% 
-  mutate(
-    new_sweat = forcats::fct_collapse(baseline_data$sweat_chlorine_level, !!!sweat_chlorine_recodes)
-  ) %>%  
-  select(new_sweat) %>% 
-  tbl_summary()
-
-as_kable_extra(tbl1, booktabs = TRUE, escape = FALSE, linesep = "") %>%
-kable_styling(latex_options = "scale_down")
 ```
 
